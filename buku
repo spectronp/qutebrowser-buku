@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+
+actions=('add' 'open' 'edit' 'del')
+
+buku_cmd="buku --nostdin --tacit --np --nc"
+
+url_regexp='^(http(s)?:\/\/)?(www.)?([a-zA-Z0-9])+([\-\.]{1}[a-zA-Z0-9]+)*\.[a-zA-Z]{2,5}(:[0-9]{1,5})?(\/[^\s]*)?$'
+
+declare -A flags=(
+    ["add"]="--add"
+    ["open"]="--open"
+    ["edit"]="--update"
+    ["del"]="--delete"
+)
+
+log() {
+    echo "message-info '$1'" >>"$QUTE_FIFO"
+}
+
+error_log() {
+    echo "message-error '$1'" >>"$QUTE_FIFO"
+    exit
+}
+
+run_buku() {
+    if $buku_cmd "${flags["$1"]}" "${@:2}"; then
+        log "Success"
+    else
+        error_log "Something wrong happened"
+    fi
+    exit
+}
+
+search() { # TODO -- separate argument parsing
+    local -n res=result
+    open_count=1
+    possible_search_flags=('-s' '-S' '--sany' '--sall')
+    search_flag='-s'
+    declare -a query
+    while [[ $# -gt 0 ]]; do
+        if [[ " ${possible_search_flags[*]} " =~ " $1 " ]]; then # search flags
+            search_flag="$1"
+            query+=("$2")
+            shift 2
+            while [[ ! "$1" =~ "^-" ]] && [[ $# -gt 0 ]]; do
+                query+=("$1")
+                shift
+            done
+        elif [[ "$1" =~ ^-n ]]; then # limit
+            if [[ "$1" == "-n" ]] && [[ "$2" =~ [[:digit:]] ]]; then
+                open_count="$2"
+                shift 2
+            else
+                open_count=$(echo "$1" | grep -Eo '[0-9]+' | head -n 1)
+                shift
+            fi
+        else
+            query+=("$1")
+            shift
+        fi
+    done
+
+    result_str=$($buku_cmd --format 1 "$search_flag" "${query[@]}" | grep -Eo '^[0-9]+' | head -n "$open_count")
+    mapfile -t res <<<"$result_str"
+
+    return
+}
+
+if [[ " ${actions[*]} " =~ " $1 " ]]; then
+    action="$1"
+    shift
+else
+    action="add"
+fi
+
+case $action in
+add)
+    if [[ "$1" =~ $url_regexp ]]; then
+        run_buku add "$@"
+    fi
+
+    run_buku add "$QUTE_URL" "$@"
+    ;;
+open)
+    if [[ -z "$1" ]]; then
+        error_log "1 argument required: index | query | tag"
+    fi
+
+    if [[ "$1" =~ ^[[:digit:]]$ ]] || [[ "$1" =~ ^\d-\d$ ]]; then
+        log "OK"
+        run_buku open "$@"
+    fi
+
+    declare -a result
+    search "$@"
+
+    run_buku open "${result[@]}"
+    ;;
+edit)
+    if [[ -z "$1" ]]; then
+        error_log "argument required: tag"
+    fi
+
+    run_buku edit "$@"
+    ;;
+del)
+    if [[ -z "$1" ]]; then
+        error_log "argument required: tag | tag range"
+    fi
+
+    run_buku del "$@"
+    ;;
+esac
