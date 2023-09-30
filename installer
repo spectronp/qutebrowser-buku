@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 userscript_download_url="https://raw.githubusercontent.com/spectronp/qutebrowser-buku/main/buku"
+buku_exec="$PWD/buku"
 install_dir="$HOME/.local/share/qutebrowser/userscripts/" # TODO -- ask user
 
 if [[ "$1" == "-u" ]] && rm "$install_dir"/buku; then
@@ -13,13 +14,14 @@ fi
 
 if [[ ! -x buku ]] && [[ ! $(file buku) =~ "Bourne-Again shell script" ]]; then
     # not inside the git repo
-    cd /tmp
-    wget $userscript_download_url
+    temp=$(mktemp -p '' buku.XXX)
+    wget -qO "$temp" $userscript_download_url
+    buku_exec="$temp"
 fi
 
-if install -Dm744 buku "$install_dir"/buku; then
-    if [[ "$PWD" == '/tmp' ]]; then
-        rm 
+if install -Dm744 "$buku_exec" "$install_dir"/buku; then
+    if [[ -n "$temp" ]]; then
+        rm "$temp"
     fi
     echo "Installed Successfully"
 else
