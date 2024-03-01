@@ -75,7 +75,7 @@ fi
 
 case $action in
 add)
-    if [[ "$1" =~ $url_regexp ]]; then
+    if echo "$1" | grep -qP $url_regexp; then
         run_buku add "$@"
     fi
 
