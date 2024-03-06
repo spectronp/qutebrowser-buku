@@ -86,7 +86,7 @@ open)
         error_log "1 argument required: index | query | tag"
     fi
 
-    if [[ "$1" =~ ^[[:digit:]]$ ]] || [[ "$1" =~ ^\d-\d$ ]]; then
+    if [[ "$1" =~ ^[[:digit:]]+$ ]] || [[ "$1" =~ ^[[:digit:]]+-[[:digit:]]+$ ]]; then
         log "OK"
         run_buku open "$@"
     fi
