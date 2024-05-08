@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-actions=('add' 'open' 'edit' 'del')
+VERSION="v0.2"
+
+actions=('add' 'open' 'edit' 'del' 'version')
 
 buku_cmd="buku --nostdin --tacit --np --nc"
 
@@ -140,4 +142,6 @@ del)
 
     run_buku del "$@"
     ;;
+version)
+    log "Buku Version: v$($buku_cmd -v), userscript version: ${VERSION}"
 esac
