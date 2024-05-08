@@ -23,7 +23,8 @@ error_log() {
 }
 
 run_buku() {
-    if $buku_cmd "${flags["$1"]}" "${@:2}"; then
+    # shellcheck disable=SC2068
+    if $buku_cmd "${flags["$1"]}" ${@:2}; then
         log "Success"
     else
         error_log "Something wrong happened"
@@ -31,41 +32,28 @@ run_buku() {
     exit
 }
 
-search() { # TODO -- separate argument parsing
-    local -n res=result
-    open_count=1
-    possible_search_flags=('-s' '-S' '--sany' '--sall')
-    search_flag='-s'
-    declare -a query
-    while [[ $# -gt 0 ]]; do
-        if [[ " ${possible_search_flags[*]} " =~ " $1 " ]]; then # search flags
-            search_flag="$1"
-            query+=("$2")
-            shift 2
-            while [[ ! "$1" =~ "^-" ]] && [[ $# -gt 0 ]]; do
-                query+=("$1")
-                shift
-            done
-        elif [[ "$1" =~ ^-n ]]; then # limit
-            if [[ "$1" == "-n" ]] && [[ "$2" =~ [[:digit:]] ]]; then
-                open_count="$2"
-                shift 2
-            else
-                open_count=$(echo "$1" | grep -Eo '[0-9]+' | head -n 1)
-                shift
-            fi
-        else
-            query+=("$1")
-            shift
-        fi
-    done
+search() {
+    open_count="$1"
+    search_flag="$2"
+    query="${3//\*/\\*}"
 
-    result_str=$($buku_cmd --format 1 "$search_flag" "${query[@]}" | grep -Eo '^[0-9]+' | head -n "$open_count")
-    mapfile -t res <<<"$result_str"
+    # shellcheck disable=SC2068
+    result_str=$($buku_cmd --format 1 "$search_flag" ${query[@]} | grep -Eo '^[0-9]+' | head -n "$open_count")
 
-    return
+    echo "${result_str//\\n/ }"
 }
 
+parse_query() {
+    query=""
+    while [[ "$1" =~ [^-][[:alpha:]]* ]]; do
+        query+="$1 "
+        shift
+    done
+
+    echo "$query"
+}
+
+# shellcheck disable=SC2076
 if [[ " ${actions[*]} " =~ " $1 " ]]; then
     action="$1"
     shift
@@ -73,27 +61,69 @@ else
     action="add"
 fi
 
+# Argument Parsing
+while : ; do
+    case "$1" in
+    -n*)
+        if [[ "$1" =~ -n[[:digit:]]+ ]]; then
+            limit=$( echo "$1" | grep -Eo '[[:digit:]]+' )
+            shift
+        elif [[ "$1" == "-n" ]] && [[ "$2" =~ [[:digit:]]+ ]]; then
+            limit="$2"
+            shift 2
+        else
+            error_log "The -n flag only accepts a number"
+        fi
+        ;;
+    -s)
+        search=true
+        search_type="--sany"
+        search_query=$(parse_query "$@")
+        shift "$#"
+        ;;
+    -S)
+        search=true
+        search_type="--sall"
+        search_query=$(parse_query "$@")
+        shift "$#"
+        ;;
+    *)
+        break
+        ;;
+    esac
+done
+
 case $action in
 add)
-    if echo "$1" | grep -qP $url_regexp; then
+    if echo "$1" | grep -qP "$url_regexp"; then
         run_buku add "$@"
     fi
 
     run_buku add "$QUTE_URL" "$@"
     ;;
 open)
-    if [[ -z "$1" ]]; then
-        error_log "1 argument required: index | query | tag"
+    if [[ -z "$1" ]] && [[ ! $search ]]; then
+        error_log "At least 1 argument required: index | query | tag"
     fi
 
-    if [[ "$1" =~ ^[[:digit:]]+$ ]] || [[ "$1" =~ ^[[:digit:]]+-[[:digit:]]+$ ]]; then
+    if [[ -n "$1" ]]; then
+        if [[ "$1" =~ ^[[:digit:]]+$ ]] || [[ "$1" =~ ^[[:digit:]]+-[[:digit:]]+$ ]]; then
+            index="$1"
+        else
+            search=true
+            search_type="--sany"
+            search_query=$(parse_query "$@")
+            shift "$#"
+        fi
+        shift
+    fi
+
+    if [[ ! $search ]]; then
         log "OK"
-        run_buku open "$@"
+        run_buku open "$index"
     fi
 
-    declare -a result
-    search "$@"
-
+    result=$(search "${limit:-1}" "$search_type" "$search_query")
     run_buku open "${result[@]}"
     ;;
 edit)
